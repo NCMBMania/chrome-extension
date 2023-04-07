@@ -1,0 +1,19 @@
+{
+  "name": "NCMB Extension",
+  "description": "NCMB Extension supports your data management on NCMB.",
+  "version": "1.0",
+  "manifest_version": 3,
+	"permissions": ["activeTab", "scripting"],
+  "action": {
+		"default_icon": "icon.png"
+  },
+	"host_permissions": [
+		"https://console.mbaas.nifcloud.com/"
+	],
+	"content_scripts": [
+		{
+			"matches": ["https://console.mbaas.nifcloud.com/*"],
+			"js": ["js/url.min.js", "js/content.js"]
+		}
+	]
+}
