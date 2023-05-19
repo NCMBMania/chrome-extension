@@ -19,6 +19,10 @@ setInterval(() => {
 			// プッシュ通知向けの処理
 			pushExtension();
 			break;
+		case 'script':
+			// スクリプト向けの処理
+			scriptExtension();
+			break;
 	}
 	executed = match;
 }, 1000);
@@ -36,6 +40,9 @@ const urlType = () => {
 	}
 	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/push.*/)) {
 		return 'push';
+	}
+	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/customlogic.*/)) {
+		return 'script';
 	}
 	return '';
 }
@@ -239,8 +246,52 @@ const userExtension = () => {
 
 const fileExtension = () => {
 	downloadAllButton();
+	addMimeTypeFilter();
 	showPreviewMonitor('');
 };
+
+const addMimeTypeFilter = () => {
+	const ref = document.querySelector('.sub-navigation .title');
+	const parent = ref.parentNode;
+	[{
+		text: '画像',
+		mime: 'image/',
+	},
+	{
+		text: '動画',
+		mime: 'video/',
+	},
+	{
+		text: '音声',
+		mime: 'audio/',
+	},
+	{
+		text: 'テキスト',
+		mime: 'text/',
+	},
+	].forEach((obj) => {
+		const button = document.createElement('button');
+		button.className = 'btn';
+		button.innerHTML = `<span class="text">${obj.text}</span>`;
+		button.onclick = () => {
+			addFilter(obj.mime);
+		};
+		ref.appendChild(button);
+	});
+};
+
+// フィルタリングを操作する
+const addFilter = (text) => {
+	document.querySelector('.sub-navigation a.btn').click();
+	document.querySelectorAll('.sub-navigation form select:first-child option')[1].selected = true;
+	document.querySelector('.sub-navigation form select').dispatchEvent(new Event('change'));
+	document.querySelector('.sub-navigation form input').value = text;
+	document.querySelector('.sub-navigation form input').dispatchEvent(new Event('input'));
+	document.querySelectorAll('.sub-navigation form select:last-child option')[1].selected = true;
+	document.querySelector('.sub-navigation form select:last-child').dispatchEvent(new Event('change'));
+	document.querySelectorAll('.sub-navigation #narrowing a:last-child')[1].click();
+};
+
 
 const showPreviewMonitor = (fileName) => {
 	setTimeout(() => {
@@ -278,7 +329,7 @@ const showPreview = async (fileName) => {
 };
 
 const downloadAllButton = () => {
-	const brother = document.querySelector('[href="#file-upload"]');;
+	const brother = document.querySelector('[href="#file-upload"]');
 	const button = document.createElement('button');
 	button.className = 'btn blue';
 	button.innerHTML = '<span class="icon left download"></span> <span class="text">一括DL</span>';
@@ -408,4 +459,54 @@ const getBlob = async (fileName) => {
 		method: "POST",
 	});
 	return res.blob();
+};
+
+const scriptExtension = () => {
+	waitUploadModal();
+	addDownloadScriptButton();
+};
+
+const waitUploadModal = (stop = false) => {
+	setTimeout(() => {
+    const dom = document.querySelector("#file-update");
+		if (!dom) return;
+    if (dom.style.display !== 'none') {
+			if (stop) {
+				return waitUploadModal(stop);
+			}
+			// ここで処理
+			const selector = "[name='change'][ng-value='true']";
+			document.querySelector("[name='change'][ng-value='true']").checked = true;
+			document.querySelector(selector).dispatchEvent(new Event('click'));
+			waitUploadModal(true);
+    } else {
+			waitUploadModal(false);
+		}
+	}, 500);
+};
+
+const addDownloadScriptButton = () => {
+	const parent = document.querySelector('.matrix-content .item-right');
+	const button = document.createElement('button');
+	button.className = 'btn blue';
+	button.innerHTML = '<span class="icon left download"></span> <span class="text">DL</span>';
+	button.onclick = downloadScript;
+	parent.appendChild(button);
+};
+
+const downloadScript = async () => {
+	const fileName = document.querySelector('.matrix-content .module-title .title').innerText.trim();
+	const appId = getAppId();
+	const url = `https://script-console.mbaas.api.nifcloud.com/2015-09-01/applications/${appId}/manageScript/${fileName}?content=true`;
+	const sessionToken = await getSessionId();
+	const res = await fetch(url, {
+		headers: {
+			accept: "application/json",
+			"x-ncmb-devs-session-token": sessionToken,
+		},
+		method: "GET",
+	});
+	const json = await res.json();
+	const type = json.Ext === 'json' ? 'application/json' : 'text/x-ruby';
+	download(fileName, new Blob([ json.Content ], { type }));
 };
