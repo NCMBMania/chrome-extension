@@ -38,7 +38,7 @@ const urlType = () => {
 	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/file.*/)) {
 		return 'file';
 	}
-	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/push.*/)) {
+	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/push$/)) {
 		return 'push';
 	}
 	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/customlogic.*/)) {
@@ -50,6 +50,44 @@ const urlType = () => {
 const datastoreExtension = () => {
 	addDataStoreExportButton();
 	addDeleteField();
+	replacePointerView();
+};
+
+const classToPath = (className) => {
+	if (className === 'user') return 'users';
+	if (className === 'push') return 'push';
+	if (className === 'role') return 'roles';
+	if (className === 'installation') return 'installations';
+	if (className === 'file') return 'files';
+	return `classes/${className}`;
+}
+
+const replacePointerView = async () => {
+	const appId = getAppId();
+	const sessionToken = await getSessionId();
+	$(document).on('mouseover', 'div.datastore-field-pointer', async function() {
+		try {
+			const params = JSON.parse($(this).next().text());
+			const path = classToPath(params.className);
+			const url = `https://console.mbaas.api.nifcloud.com/2013-09-01/applications/${appId}/${path}/${params.objectId}`;
+			const res = await fetch(url, {
+				headers: {
+					"Content-Type": "application/json",
+					"x-ncmb-devs-session-token": sessionToken,
+				},
+				method: "GET",
+			});
+			const json = await res.json();
+			const html = ['<table>'];
+			for (const key in json) {
+				if (key === 'acl') continue;
+				html.push(`<tr><th>${key}</th><td>${json[key] || ''}</td></tr>`);
+			}
+			html.push('</table>');
+			$(this).next().html(html.join(''));
+		} catch (e) {
+		}
+	});
 };
 
 const addDataStoreExportButton = () => {
@@ -296,6 +334,7 @@ const addFilter = (text) => {
 const showPreviewMonitor = (fileName) => {
 	setTimeout(() => {
 		const dom = document.querySelector('.matrix-content .title');
+		if (!dom) return;
 		if (dom.innerText.trim() === '') return showPreviewMonitor(fileName);
 		if (fileName === dom.innerText.trim()) return showPreviewMonitor(fileName);
 		fileName = dom.innerText.trim();
@@ -338,7 +377,55 @@ const downloadAllButton = () => {
 };
 
 const pushExtension = () => {
+	addDownloadReportButton();
+	// addCopyButton();
+};
+
+/*
+const addCopyButton = (stop = false) => {
+	const brother = document.querySelector('button.red');
+	const li = document.createElement('li');
+	li.classList.add('item');
+	const button = document.createElement('button');
+	button.classList.add('btn', 'green');
+	button.innerHTML = `<span class="text">コピー</span>`;
+	button.onclick = copyPush;
+	li.appendChild(button);
+	brother.parentNode.parentNode.insertBefore(li, brother.parentNode);
+};
+
+const copyPush = async () => {
+	const objectId = document.querySelector('.controls span').innerText;
+	console.log(objectId);
+	const sessionToken = await getSessionId();
+	const appId = getAppId();
+	const res = await fetch(`https://console.mbaas.api.nifcloud.com/2013-09-01/applications/${appId}/push/${objectId}`, {
+		headers: {
+			'content-type': "application/json",
+			"x-ncmb-devs-session-token": sessionToken,
+		},
+		method: "GET",
+	});
+	const old = await res.json();
+	for (const key of ['objectId', 'deliveryNumber', 'deliveryPlanNumber', 'error', 'status', 'updateDate', 'createDate']) {
+		delete old[key];
+	}
+	console.log(JSON.stringify(old));
+	const res2 = await fetch(`https://console.mbaas.api.nifcloud.com/2013-09-01/applications/${appId}/push`, {
+		headers: {
+			'content-type': "application/json",
+			"x-ncmb-devs-session-token": sessionToken,
+		},
+		method: "POST",
+		body: JSON.stringify(old),
+	});
+	console.log(await res2.json());
+};
+*/
+
+const addDownloadReportButton = () => {
 	const brother = document.querySelector('.title a.btn');
+	if (!brother) return;
 	const button = document.createElement('button');
 	button.classList.add('btn', 'pulldown', 'blue');
 	button.innerHTML = `<span class="text">
@@ -464,6 +551,7 @@ const getBlob = async (fileName) => {
 const scriptExtension = () => {
 	waitUploadModal();
 	addDownloadScriptButton();
+	addLogExportButton();
 };
 
 const waitUploadModal = (stop = false) => {
@@ -493,6 +581,63 @@ const addDownloadScriptButton = () => {
 	button.onclick = downloadScript;
 	parent.appendChild(button);
 };
+
+const addLogExportButton = (stop = false) => {
+	setTimeout(() => {
+    const dom = document.querySelector(".module-content.log");
+		if (!dom) return;
+    if (dom.style.display !== 'none') {
+			if (stop) {
+				return addLogExportButton(stop);
+			}
+			const parent = dom.querySelector('.btn.green').parentElement;
+			const button = document.createElement('button');
+			button.className = 'btn blue log-download';
+			button.innerHTML = '<span class="icon left download"></span> <span class="text">ログDL</span>';
+			button.onclick = downloadScriptLog;
+			parent.appendChild(button);
+			addLogExportButton(true);
+		} else {
+			const button = document.querySelector('button.log-download');
+			if (button) button.remove();
+			addLogExportButton(false);
+		}
+	}, 500);
+};
+
+const downloadScriptLog = async () => {
+	const fileName = document.querySelector('.matrix-content .module-title .title').innerText.trim();
+	const form = document.querySelector('#log-form')
+	const formData = new FormData(form);
+  const formParams = new URLSearchParams(formData);
+	const queries = new URLSearchParams();
+	const keys = {
+		'log_limit': 'limit',
+		'log_status': 'Status',
+		'log_begin': 'begin',
+		'log_end': 'end',
+	};
+	for (const key in keys) {
+		if (formParams.get(key)) {
+			queries.set(keys[key], formParams.get(key));
+		}
+	}
+	const applicationId = getAppId();
+	const sessionToken = await getSessionId();
+	const url = `https://script-console.mbaas.api.nifcloud.com/2015-09-01/applications/${applicationId}/scriptLog/${fileName}?${queries.toString()}`;
+	const res = await fetch(url, {
+		headers: {
+			"X-NCMB-Devs-Session-Token": sessionToken,
+		},
+		method: "GET",
+	});
+	const json = await res.json();
+	const csv = jsonToCsv(json);
+	const blob = new Blob([ csv ], {
+		type:"text/csv"
+	});
+	download(`${fileName}.csv`, blob);
+}
 
 const downloadScript = async () => {
 	const fileName = document.querySelector('.matrix-content .module-title .title').innerText.trim();
