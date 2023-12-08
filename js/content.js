@@ -3,6 +3,10 @@ setInterval(() => {
 	const match = urlType();
 	if (match === executed) return;
 	switch (match) {
+		case 'datastores':
+			// データストア最初の表示
+			datastoresExtension();
+			break;
 		case 'datastore':
 			// データストア向けの処理
 			datastoreExtension();
@@ -29,8 +33,11 @@ setInterval(() => {
 
 const urlType = () => {
 	const url = URLJS(window.location.href);
-	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/datastore\.*/)) {
+	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/datastore\?.+/)) {
 		return 'datastore';
+	}
+	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/datastore$/)) {
+		return 'datastores';
 	}
 	if (url.hash.match(/#\/applications\/[a-zA-Z0-9]+\/user.*/)) {
 		return 'user';
@@ -46,6 +53,43 @@ const urlType = () => {
 	}
 	return '';
 }
+
+const datastoresExtension = () => {
+	addDataStoreAllExportButton();
+};
+
+const addDataStoreAllExportButton = () => {
+	const title = document.querySelector('.app-menu-nav-title');
+	title.innerHTML = `データストア <button class="btn green" id="datastore-all-export"><span class="icon left download"></span> エクスポート</button>`;
+	document.querySelector('#datastore-all-export').onclick = dataStoreAllExport;
+};
+
+const dataStoreAllExport = async (e, skip = 0) => {
+	const limit = 10;
+	const path = `class?limit=${limit}&skip=${skip}&order=-defaultClassFlag,definitionClassName&where=%7B%22modifiableFlag%22:true,%22definitionClassName%22:%7B%22$nin%22:%5B%22user%22,%22push%22,%22push_open_state%22,%22file%22%5D%7D%7D`;
+	const appId = getAppId();
+	const sessionToken = await getSessionId();
+	const url = `https://console.mbaas.api.nifcloud.com/2013-09-01/applications/${appId}/${path}`;
+	const res = await fetch(url, {
+		headers: {
+			"Content-Type": "application/json",
+			"x-ncmb-devs-session-token": sessionToken,
+		},
+		method: "GET",
+	});
+	const json = await res.json();
+	for (const obj of json.results) {
+		const className = obj.definitionClassName;
+		const results = await getDataStoreRecords(className);
+		const blob = new Blob([ JSON.stringify(results) ], {
+			type:"text/json"
+		});
+		download(`${className}.json`, blob);
+	}
+	if (json.results.length === limit) {
+		dataStoreAllExport(e, skip + limit);
+	}
+};
 
 const datastoreExtension = () => {
 	addDataStoreExportButton();
@@ -518,12 +562,29 @@ const downloadReportCsv = async (e) => {
 
 
 // ファイルストアの一括DL
-const downloadAllFiles = async () => {
-	const files = document.querySelectorAll(".filestore-list-name");
-	for (const file of files) {
-		const encFileName = file.firstChild.innerText;
-		const blob = await getBlob(encFileName);
-		await download(encFileName, blob);
+const downloadAllFiles = async (e, skip = 0, results = []) => {
+	const limit = 1000;
+	const appId = getAppId();
+	const sessionToken = await getSessionId();
+	const path = `https://console.mbaas.api.nifcloud.com/2013-09-01/applications/${appId}/files?limit=${limit}&skip=${skip}&order=-createDate`;
+	const res = await fetch(path, {
+		headers: {
+			accept: "application/json",
+			"x-ncmb-devs-session-token": sessionToken,
+		},
+		method: "GET",
+	});
+	const json = await res.json();
+	results = results.concat(json.results);
+	for (const file of json.results) {
+		const blob = await getBlob(file.fileName);
+		download(file.fileName, blob);
+	}
+	if (json.results.length === limit) {
+		downloadAllFiles(e, skip + limit, results);
+	} else {
+		alert('一括DLが完了しました');
+		download('files.json', new Blob([ JSON.stringify({ results }) ], {type: "application/json"}));
 	}
 };
 
